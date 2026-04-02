@@ -1,0 +1,13 @@
+todo:
+
+ein service kann mehrere user und passwörter von mir haben
+delete button in fenster und eintrag aus json löschen
+verschlüsseln der json datei, damit diese nicht gelesen werden kann
+spalten sortierbar machen
+ein suchen feld, damit ich den service direkt suchen kann
+passwort generieren muss in die gui implementiert werden
+als abschluss eine abfrage von username und masterpassword, um die anderen passwörter zu schützen
+    - masterpassword sollte oben als erstes im json stehen
+
+export als exe, damit das auch unter windows funktioniert
+refactoring und alles in unterschiedliche dateien packen

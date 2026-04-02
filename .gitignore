@@ -1,0 +1,5 @@
+# folders to be ignored
+venv/
+
+# files to be ignored
+passwords.json
