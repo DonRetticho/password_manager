@@ -1,11 +1,18 @@
 todo:
 
-ein service kann mehrere user und passwörter von mir haben
-delete button in fenster und eintrag aus json löschen
+ein service kann mehrere user und passwörter von mir haben - done
+delete button in fenster und eintrag aus json löschen - done
 verschlüsseln der json datei, damit diese nicht gelesen werden kann
 spalten sortierbar machen
 ein suchen feld, damit ich den service direkt suchen kann
-passwort generieren muss in die gui implementiert werden
+password per click kopieren
+passwort generieren muss in die gui implementiert werden - done
+passwort generieren längen eingabe machen
+info/fehler felder anzeigen, wenn etwas nicht stimmt (
+    bei delete, wenn nichts ausgewählt ist
+    bei delete, ob wirklich gelöscht werden soll
+    bei add, wenn ein pflichtfeld nicht voll ist
+)
 als abschluss eine abfrage von username und masterpassword, um die anderen passwörter zu schützen
     - masterpassword sollte oben als erstes im json stehen
 
