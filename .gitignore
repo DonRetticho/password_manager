@@ -3,3 +3,6 @@ venv/
 
 # files to be ignored
 passwords.json
+salt.bin
+refactoring_plan.txt
+info.txt
