@@ -1,0 +1,65 @@
+Refactoring-Plan für Passwortmanager
+
+1. Trennung von GUI und Logik
+   - GUI-Code (CTk, Treeview, Widgets) von der Logik trennen.
+   - Dateien:
+       - password_manager.py  -> Logik, Dateioperationen, Verschlüsselung, Passwortgenerierung, Validierung
+       - gui.py               -> Alles, was mit CTk und Treeview zu tun hat
+       - dialogs.py           -> Alle Popup-Fenster, Input-Dialoge, Info-Dialoge
+       - main.py              -> Startet App, verbindet GUI und Manager
+
+2. Passwortverschlüsselung
+   - Verschlüsselung in eigene Klasse oder Modul auslagern
+     Beispiel:
+       class PasswordCrypto:
+           def __init__(self, master_password, salt):
+               self.key = self.generate_key(master_password, salt)
+               self.fernet = Fernet(self.key)
+
+           def generate_key(self, master_password, salt):
+               ...
+
+           def encrypt(self, password: str) -> str:
+               return self.fernet.encrypt(password.encode()).decode()
+
+           def decrypt(self, password: str) -> str:
+               return self.fernet.decrypt(password.encode()).decode()
+   - Vorteil: Alle Methoden zur Verschlüsselung zentral, kein doppelter Code.
+
+3. Datenmanagement
+   - Lade-, Speichern- und Update-Funktionen in eigene Klasse:
+       class PasswordStore:
+           def __init__(self, file_path: str, crypto: PasswordCrypto):
+               self.file_path = file_path
+               self.crypto = crypto
+
+           def load(self) -> dict:
+               ...
+
+           def add(self, service, username, password):
+               ...
+
+           def delete(self, service, username, password):
+               ...
+
+           def update(self, service, old_username, old_password, new_username, new_password):
+               ...
+   - Vorteil: GUI ruft nur noch store.add(...) oder store.delete(...) auf. Keine JSON-Manipulation im GUI-Code.
+
+4. GUI-Logik
+   - GUI-Events wie start_edit, copy_to_clipboard, filter_tree bleiben in gui.py
+   - Treeview-Interaktionen → nur Events, keine direkte JSON-Manipulation
+   - Statusmeldungen → eigene kleine Funktion: set_status(msg, color="green")
+
+5. Dialoge und Input-Fenster
+   - Master-Passwort, Passwortlänge, Info-Dialoge ausgelagert in dialogs.py
+   - Vorteil: Wiederverwendbar, übersichtlich, leicht testbar
+
+6. Hilfsfunktionen
+   - Passwortgenerator, Duplikatsprüfung, Suchfilter → eigenes Modul utils.py
+
+7. Vorteile des Refactorings
+   1. Modular: GUI, Logik, Dialoge getrennt → leichter zu warten
+   2. Testbar: z.B. PasswordStore oder PasswordCrypto unabhängig von GUI testen
+   3. Weniger Redundanz: Treeview & JSON-Update-Code an einem Ort
+   4. Skalierbar: Features wie Export/Import, Master-Passwort-Änderung, Multi-User einfacher implementierbar

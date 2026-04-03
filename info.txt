@@ -2,19 +2,22 @@ todo:
 
 ein service kann mehrere user und passwörter von mir haben - done
 delete button in fenster und eintrag aus json löschen - done
-verschlüsseln der json datei, damit diese nicht gelesen werden kann
-spalten sortierbar machen
-ein suchen feld, damit ich den service direkt suchen kann
-password per click kopieren
+verschlüsseln der json datei, damit diese nicht gelesen werden kann - done
+spalten sortierbar machen - done (auch wenns nur die services sind)
+ein suchen feld, damit ich den service direkt suchen kann - done
+password per click kopieren - done
 passwort generieren muss in die gui implementiert werden - done
-passwort generieren längen eingabe machen
+passwort generieren längen eingabe machen - done
 info/fehler felder anzeigen, wenn etwas nicht stimmt (
-    bei delete, wenn nichts ausgewählt ist
-    bei delete, ob wirklich gelöscht werden soll
-    bei add, wenn ein pflichtfeld nicht voll ist
+    bei delete, wenn nichts ausgewählt ist - done
+    bei delete, ob wirklich gelöscht werden soll - done
+    bei add, wenn ein pflichtfeld nicht voll ist - done
 )
-als abschluss eine abfrage von username und masterpassword, um die anderen passwörter zu schützen
+als abschluss eine abfrage von masterpassword, um die anderen passwörter zu schützen - done
     - masterpassword sollte oben als erstes im json stehen
+
+das masterpassword sollte änderebar sein! button in gui erstellen und dann eingabe fordern
+beim ersten starten sollte das masterpassword angegebene werden
 
 export als exe, damit das auch unter windows funktioniert
 refactoring und alles in unterschiedliche dateien packen
