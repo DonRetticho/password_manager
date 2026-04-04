@@ -1,8 +1,11 @@
 # folders to be ignored
 venv/
+__pycache__/
 
 # files to be ignored
 passwords.json
 salt.bin
 refactoring_plan.txt
 info.txt
+custom_test.py
+ganzer_test.py

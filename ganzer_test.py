@@ -26,74 +26,184 @@ if not os.path.exists(password_file):
     with open(password_file, "w") as f:
         json.dump({}, f)
 
+###### Classes
+# refactor: remove global and set them in seperate things
+class UIState:
+    def __init__(self):
+        self.tree = None
+        self.entry_service = None
+        self.entry_user = None
+        self.entry_pass = None
+        self.status_lbl = None
+        self.service_nodes = {}
+
+# password manager class
+class PasswordManager():
+    def __init__(self, file_path, fernet):
+        self.file_path = file_path
+        self.fernet = fernet
+
 # function to load the data
-def load_data():
-    data = load_data_raw()
+    def load_data(self):
+        data = self._load_data_raw()
 
-    for service, accounts in data.items():
-        for acc in accounts:
-            acc["password"] = decrypt_password(acc["password"], fernet)
+        for service, accounts in data.items():
+            for acc in accounts:
+                acc["password"] = self._decrypt_password(acc["password"])
 
-    return data
+        return data
+    
+    # function to save the entered data
+    def save_data(self, service, username, password):
+        data = self._load_data_raw()
+        encrypted_password = self._encrypt_password(password)
+
+        if service not in data:
+            data[service] = []
+
+        # we want to be able to save multiple users and passwords for the same service
+        # so we make a list and inside that list we add the username and password
+
+        data[service].append({
+            "username": username, 
+            "password": encrypted_password
+            })
+        
+        with open(password_file, "w") as f:
+            json.dump(data, f, indent=4)
+
+    def _load_data_raw(self):
+        if not os.path.exists(password_file):
+            return {}
+        with open(password_file, "r") as f:
+            return json.load(f)
+        
+    def _write(self, data):
+        with open(self.file_path, "w") as f:
+            json.dump(data, f, indent=4)
+
+    def _encrypt_password(self, password: str) -> str:
+        return self.fernet.encrypt(password.encode()).decode()
+
+    def _decrypt_password(self, password: str) -> str:
+        try:
+            return self.fernet.decrypt(password.encode()).decode()
+        except Exception:
+            return password # fallback if not encrypted
+        
+    def delete_entry(self, service, username, password):
+        data = self._load_data_raw()
+
+        if service in data:
+            data[service] = [
+                acc for acc in data[service]
+                if not (
+                    acc["username"] == username and
+                    self._decrypt_password(acc["username"]) == password
+                )
+            ]
+
+            if not data[service]:
+                del data[service]
+
+        self._write(data)
+
+    def update_entry(self, service, old_username, old_password, new_username, new_password):
+        data = self._load_data_raw()
+
+        if service in data:
+            for acc in data[service]:
+                if (
+                    acc["username"] == old_username and
+                    self._decrypt_password(acc["password"]) == old_password
+                ):
+                    acc["username"] = new_username
+                    acc["password"] = self._encrypt_password(new_password)
+
+        self._write(data)
 
 # add new password
-def add_password():
-    service = entry_service.get()
-    username = entry_user.get()
-    password = entry_pass.get()
+def add_password(ui, manager):
+    service = ui.entry_service.get()
+    username = ui.entry_user.get()
+    password = ui.entry_pass.get()
 
     # service and username are required fields
-    if not service:
-        status_lbl.configure(text="Service/Website is required!", text_color="red")
-        return
-    
-    if not username:
-        status_lbl.configure(text="Username is required!", text_color="red")
+    error = validate_inputs(service, username)
+    if error:
+        set_status(ui, error, text_color="red")
         return
     
     # check for duplicates
-    data = load_data()
+    data = manager.load_data()
     if service in data:
         if any(acc["username"] == username for acc in data[service]):
-            status_lbl.configure(text="This username already exists for this service!", text_color="red")
+            ui.status_lbl.configure(text="This username already exists for this service!", text_color="red")
             return
     
     # if no password is entered a random one is generated
-    if not password:
-        length = ask_password_length()
-
-        if length is None:
-            return
+    password = get_or_create_password(password)
+    if password is None:
+        return
         
-        password = generate_password(length)
-        entry_pass.insert(0, password)
+    if not ui.entry_pass.get():
+        ui.entry_pass.insert(0, password)
 
-    save_data(service, username, password)
+    manager.save_data(service, username, password)
 
     # with multiple users and passwords per service we dont want to override the previous entry for a service
     #tree.insert("", "end", values=(service, username, password))
 
     # create (or get) parent (service)
-    if service not in service_nodes:
-        parent_id = tree.insert("", "end", text=service, open=True)
-        service_nodes[service] = parent_id
+    insert_into_tree(ui, service, username, password)
+
+    clear_inputs(ui)
+
+    set_status(ui, "Entry added!")
+
+# refactor function: instead of add_password doing all things we are splitting it up into smaller functions
+# firsts function is to validate that service and username are required
+def validate_inputs(service, username):
+    if not service:
+        return "Service/Website is required!"
+    if not username:
+        return "Username is required!"
+    
+# second refactor: the password generation or if entered manually
+def get_or_create_password(password):
+    if password:
+        return password
+    
+    length = ask_password_length()
+    if length is None:
+        return None
+    
+    return generate_password(length)
+
+# third refactor: remove the insertion in the tree from add_password
+def insert_into_tree(ui, service, username, password):
+    if service not in ui.service_nodes:
+        parent_id = ui.tree.insert("", "end", text=service, open=True)
+        ui.service_nodes[service] = parent_id
     else:
-        parent_id = service_nodes[service]
+        parent_id = ui.service_nodes[service]
 
-    # add child (account)
-    tree.insert(parent_id, "end", values=(username, password))
+    ui.tree.insert(parent_id, "end", values=(username, password))
 
-    entry_service.delete(0, "end")
-    entry_user.delete(0, "end")
-    entry_pass.delete(0, "end")
+# fourth refactor: remove the reset of the entry fields from add_password
+def clear_inputs(ui):
+    ui.entry_service.delete(0, "end")
+    ui.entry_pass.delete(0, "end")
+    ui.entry_user.delete(0, "end")
 
-    status_lbl.configure(text="Entry added!", text_color="green")
-
-    status_lbl.after(2000, lambda: status_lbl.configure(text=""))
+# fifth refactor: remove the status label configuration from add_password
+def set_status(ui, message, color="green"):
+    ui.status_lbl.configure(text=message, text_color=color)
+    ui.status_lbl.after(2000, lambda: ui.status_lbl.configure(text=""))
 
 # delete selected entries
-def delete_selected():
-    selected_items = tree.selection() # list of selected items
+def delete_selected(ui, manager):
+    selected_items = ui.tree.selection() # list of selected items
     if not selected_items:
         show_info_dialog("Warning", "No entry selected!")
         return # if no items are selected do nothing
@@ -105,34 +215,23 @@ def delete_selected():
         return
 
     # refresh the json file
-    data = load_data()
+    data = manager.load_data()
 
     for item_id in selected_items:
-        parent = tree.parent(item_id)
+        parent = ui.tree.parent(item_id)
 
         if not parent:
-            service = tree.item(item_id)["text"]
-            tree.delete(item_id)
-            data.pop(service, None)
+            service = ui.tree.item(item_id)["text"]
+            ui.tree.delete(item_id)
         else:
-            service = tree.item(parent)["text"]
-            username, password = tree.item(item_id)["values"]
+            service = ui.tree.item(parent)["text"]
+            username, password = ui.tree.item(item_id)["values"]
 
             # remove from tree
-            tree.delete(item_id)
+            ui.tree.delete(item_id)
 
             # remove from json file
-            if service in data:
-                data[service] = [
-                    acc for acc in data[service]
-                    if not (acc["username"] == username and acc["password"] == password)
-                ]
-            
-                if not data[service]:
-                    data.pop(service)
-            
-    with open(password_file, "w") as f:
-        json.dump(data, f, indent=4)
+            manager.delete_entry(service, username, password)
 
     show_info_dialog("Info", "Selected entries deleted!")
 
@@ -148,30 +247,9 @@ def generate_password(lenght=14):
 
     return password
 
-# function to save the entered data
-def save_data(service, username, password):
-    data = load_data_raw()
-    encrypted_password = encrypt_password(password, fernet)
 
-    if service not in data:
-        data[service] = []
 
-    # we want to be able to save multiple users and passwords for the same service
-    # so we make a list and inside that list we add the username and password
 
-    data[service].append({
-        "username": username, 
-        "password": encrypted_password
-        })
-    
-    with open(password_file, "w") as f:
-        json.dump(data, f, indent=4)
-
-def load_data_raw():
-    if not os.path.exists(password_file):
-        return {}
-    with open(password_file, "r") as f:
-        return json.load(f)
 
 def ask_password_length():
     """
@@ -254,9 +332,9 @@ def show_info_dialog(title: str, message: str):
     app.wait_window(dialog)
 
 # to make the fields in the table editable we need a new function as ttk doesnt support it
-def start_edit(event):
-    item_id = tree.focus()
-    column = tree.identify_column(event.x)
+def start_edit(event, ui):
+    item_id = ui.tree.focus()
+    column = ui.tree.identify_column(event.x)
 
     if not item_id:
         return
@@ -264,17 +342,17 @@ def start_edit(event):
     if column == "#0":
         return
 
-    parent = tree.parent(item_id)
+    parent = ui.tree.parent(item_id)
     if not parent:
         return
     
     col_index = int(column.replace("#", "")) - 1
 
-    x, y, width, height = tree.bbox(item_id, column) # get the bounding box of the selected cell
+    x, y, width, height = ui.tree.bbox(item_id, column) # get the bounding box of the selected cell
 
-    value = tree.item(item_id, "values")[col_index]
+    value = ui.tree.item(item_id, "values")[col_index]
 
-    entry = ctk.CTkEntry(tree, width=width, height=height)
+    entry = ctk.CTkEntry(ui.tree, width=width, height=height)
     entry.place(x=x, y=y)
     entry.insert(0, value)
     entry.focus()
@@ -283,48 +361,44 @@ def start_edit(event):
 
     def save_edit(event=None):
         new_value = entry.get()
-        values = list(tree.item(item_id, "values"))
+        values = list(ui.tree.item(item_id, "values"))
         values[col_index] = new_value
-        tree.item(item_id, values=values)
+        ui.tree.item(item_id, values=values)
 
-        update_json_after_edit(item_id, values)
+        update_json_after_edit(ui, manager, item_id, values)
 
         entry.destroy()
     
     entry.bind("<Return>", save_edit)
     entry.bind("<FocusOut>", lambda e: entry.destroy())
 
-def update_json_after_edit(item_id, new_values):
-    data = load_data()
+def update_json_after_edit(ui, manager, item_id, new_values):
+    parent = ui.tree.parent(item_id)
+    service = ui.tree.item(parent)["text"]
 
-    parent = tree.parent(item_id)
-    service = tree.item(parent)["text"]
-
-    old_values = tree.item(item_id)["values"]
+    old_values = ui.tree.item(item_id)["values"]
 
     old_username, old_password = old_values
     new_username, new_password = new_values
 
-    if service in data:
-        for acc in data[service]:
-            if acc["username"] == old_username and acc["password"] == old_password:
-                acc["username"] = new_username
-                acc["password"] = new_password
-                break
-
-    with open(password_file, "w") as f:
-        json.dump(data, f, indent=4)
+    manager.update_entry(
+        service,
+        old_username,
+        old_password,
+        new_username,
+        new_password
+    )
 
 # function to copy the password directly to clipboard
 def copy_to_clipboard(event):
-    item_id = tree.focus()
-    column = tree.identify_column(event.x)
+    item_id = ui.tree.focus()
+    column = ui.tree.identify_column(event.x)
 
-    parent = tree.parent(item_id)
+    parent = ui.tree.parent(item_id)
     if not parent:
         return
     
-    values = tree.item(item_id)["values"]
+    values = ui.tree.item(item_id)["values"]
 
     if len(values) < 2:
         return
@@ -333,18 +407,18 @@ def copy_to_clipboard(event):
 
     if column == "#1":
         text = values[0]
-        status_lbl.configure(text="Username copied!")
+        ui.status_lbl.configure(text="Username copied!")
 
     elif column == "#2":
         text = values[1]
-        status_lbl.configure(text="Password copied!")
+        ui.status_lbl.configure(text="Password copied!")
 
     if text is None:
         return
     
     pyperclip.copy(text) # use pyperclip to copy to clipboard
 
-    status_lbl.after(2000, lambda: status_lbl.configure(text="")) # set the status label empty after 2 seconds
+    ui.status_lbl.after(2000, lambda: ui.status_lbl.configure(text="")) # set the status label empty after 2 seconds
 
 # function to sort the columns
 def treeview_sort_column(tv, col, reverse=False):
@@ -370,17 +444,17 @@ def filter_tree(search_text):
 
     if search_text == "":
         # if field is empty show everything
-        for parent_id in service_nodes.values():
-            tree.reattach(parent_id, '', 'end')
+        for parent_id in ui.service_nodes.values():
+            ui.tree.reattach(parent_id, '', 'end')
 
         return
     
     # apply filter
-    for service, parent_id in service_nodes.items():
+    for service, parent_id in ui.service_nodes.items():
         if search_text in service.lower():
-            tree.reattach(parent_id, '', 'end')
+            ui.tree.reattach(parent_id, '', 'end')
         else:
-            tree.detach(parent_id)
+            ui.tree.detach(parent_id)
 
 def on_change_search(*args):
     filter_tree(search_var.get())
@@ -396,11 +470,7 @@ def generate_key(master_password: str, salt: bytes):
 
     return base64.urlsafe_b64encode(kdf.derive(master_password.encode()))
 
-def encrypt_password(password: str, fernet: Fernet) -> str:
-    return fernet.encrypt(password.encode()).decode()
 
-def decrypt_password(password: str, fernet: Fernet) -> str:
-    return fernet.decrypt(password.encode()).decode()
 
 def is_password_file_empty():
     if not os.path.exists(password_file):
@@ -526,6 +596,7 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 app = ctk.CTk()
+ui = UIState()
 app.geometry("800x400")
 app.title("Mini Password Manager")
 
@@ -536,6 +607,8 @@ if not master_password:
 
 key = generate_key(master_password, salt)
 fernet = Fernet(key)
+
+manager = PasswordManager(password_file, fernet)
 
 # frame for the entry field
 frame_top = ctk.CTkFrame(app)
@@ -549,25 +622,25 @@ note_lbl = ctk.CTkLabel(frame_top, text="If no password is entered it will be gi
 note_lbl.grid(row=1, column=0, padx=5, pady=5, columnspan=4, sticky="w")
 
 # entry fields
-entry_service = ctk.CTkEntry(frame_top, placeholder_text="Service/Website")
-entry_service.grid(row=2, column=0, padx=5, pady=5)
+ui.entry_service = ctk.CTkEntry(frame_top, placeholder_text="Service/Website")
+ui.entry_service.grid(row=2, column=0, padx=5, pady=5)
 
-entry_user = ctk.CTkEntry(frame_top, placeholder_text="Username")
-entry_user.grid(row=2, column=1, padx=5, pady=5)
+ui.entry_user = ctk.CTkEntry(frame_top, placeholder_text="Username")
+ui.entry_user.grid(row=2, column=1, padx=5, pady=5)
 
-entry_pass = ctk.CTkEntry(frame_top, placeholder_text="Password")
-entry_pass.grid(row=2, column=2, padx=5, pady=5)
+ui.entry_pass = ctk.CTkEntry(frame_top, placeholder_text="Password")
+ui.entry_pass.grid(row=2, column=2, padx=5, pady=5)
 
 # buttons
-btn_add = ctk.CTkButton(frame_top, text="Add", command=add_password)
+btn_add = ctk.CTkButton(frame_top, text="Add", command=lambda: add_password(ui, manager))
 btn_add.grid(row=2, column=3, padx=5, pady=5)
 
-btn_delete = ctk.CTkButton(frame_top, text="Delete", command=delete_selected)
+btn_delete = ctk.CTkButton(frame_top, text="Delete", command=lambda: delete_selected(ui, manager))
 btn_delete.grid(row=2, column=4, padx=5, pady=5)
 
 # status label
-status_lbl = ctk.CTkLabel(frame_top, text="", text_color="green")
-status_lbl.grid(row=3, column=0, columnspan=4, padx=5, pady=5, sticky="w")
+ui.status_lbl = ctk.CTkLabel(frame_top, text="", text_color="green")
+ui.status_lbl.grid(row=3, column=0, columnspan=4, padx=5, pady=5, sticky="w")
 
 # search block
 search_var = ctk.StringVar()
@@ -585,44 +658,44 @@ search_entry.grid(row=4, column=1, padx=5, pady=5, sticky="w", columnspan=2)
 frame_tree = ctk.CTkFrame(app)
 frame_tree.pack(padx=10, pady=10, fill="both", expand=True)
 
-tree = ttk.Treeview(
+ui.tree = ttk.Treeview(
     frame_tree, 
     columns=("Username", "Password"), 
     show="tree headings", 
     selectmode="extended") # with extended we can select multiple rows (important for deleting)
-tree.heading("#0", text="Service/Website", command=lambda: treeview_sort_column(tree, "#0", False))
-tree.heading("Username", text="Username", command=lambda: treeview_sort_column(tree, "Username", False))
-tree.heading("Password", text="Password", command=lambda: treeview_sort_column(tree, "Password", False))
+ui.tree.heading("#0", text="Service/Website", command=lambda: treeview_sort_column(ui.tree, "#0", False))
+ui.tree.heading("Username", text="Username", command=lambda: treeview_sort_column(ui.tree, "Username", False))
+ui.tree.heading("Password", text="Password", command=lambda: treeview_sort_column(ui.tree, "Password", False))
 
-tree.column("#0", width=200)
-tree.column("Username", width=150)
-tree.column("Password", width=150)
+ui.tree.column("#0", width=200)
+ui.tree.column("Username", width=150)
+ui.tree.column("Password", width=150)
 
 
 
-tree.pack(fill="both", expand=True, side="left")
+ui.tree.pack(fill="both", expand=True, side="left")
 
-tree.bind("<F2>", start_edit)
-tree.bind("<Double-1>", copy_to_clipboard)
+ui.tree.bind("<F2>", lambda e: start_edit(e, ui, manager))
+ui.tree.bind("<Double-1>", copy_to_clipboard)
 
 # Scrollbar
-scrollbar = ctk.CTkScrollbar(frame_tree, orientation="vertical", command=tree.yview)
+scrollbar = ctk.CTkScrollbar(frame_tree, orientation="vertical", command=ui.tree.yview)
 scrollbar.pack(side="right", fill="y")
-tree.configure(yscrollcommand=scrollbar.set)
+ui.tree.configure(yscrollcommand=scrollbar.set)
 
 # to group usernames and passwords with the same service we need to save them in a dictionary
-service_nodes = {}
+ui.service_nodes = {}
 
 # load data at start
-for service, accounts in load_data().items():
+for service, accounts in manager.load_data().items():
 
     if isinstance(accounts, dict):
         accounts = [accounts]
 
-    parent_id = tree.insert("", "end", text=service, open=True)
-    service_nodes[service] = parent_id
+    parent_id = ui.tree.insert("", "end", text=service, open=True)
+    ui.service_nodes[service] = parent_id
 
     for acc in accounts:
-        tree.insert(parent_id, "end", values=(acc["username"], acc["password"]))
+        ui.tree.insert(parent_id, "end", values=(acc["username"], acc["password"]))
 
 app.mainloop()
